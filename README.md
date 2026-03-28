@@ -1,4 +1,4 @@
-Stock & Crypto Price Forecaster
+## Stock & Crypto Price Forecaster
 
 An end-to-end deep learning dashboard that forecasts stock and cryptocurrency prices using an LSTM model — featuring interactive charts, live data from yfinance, and one-click deployment on Streamlit Cloud.
 
