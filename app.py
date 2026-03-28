@@ -4,21 +4,17 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from sklearn.metrics import mean_squared_error
 
 st.set_page_config(page_title="Stock & Crypto Forecaster", layout="wide")
 st.title("Stock & Crypto Price Forecaster")
-st.markdown("Predict future prices using an LSTM deep learning model.")
+st.markdown("Predict future prices using a machine learning model.")
 
-# --- Sidebar ---
 st.sidebar.header("Settings")
 ticker = st.sidebar.text_input("Ticker symbol", value="BTC-USD")
 period = st.sidebar.selectbox("Historical period", ["1y", "2y", "5y"], index=1)
 look_back = st.sidebar.slider("Look-back window (days)", 30, 120, 60)
-epochs = st.sidebar.slider("Training epochs", 5, 30, 10)
 
-# --- Fetch Data ---
 @st.cache_data
 def get_data(ticker, period):
     df = yf.download(ticker, period=period)
@@ -26,23 +22,20 @@ def get_data(ticker, period):
 
 df = get_data(ticker, period)
 
-# --- Show raw chart ---
 st.subheader(f"{ticker} — Historical Closing Price")
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=df.index, y=df["Close"].squeeze(), name="Actual Price", line=dict(color="#378ADD")))
 fig.update_layout(xaxis_title="Date", yaxis_title="Price (USD)", height=400)
 st.plotly_chart(fig, use_container_width=True)
 
-# --- Stats ---
 col1, col2, col3 = st.columns(3)
-col1.metric("Current Price", f"${df['Close'].iloc[-1].squeeze():.2f}")
-col2.metric("All-time High (period)", f"${df['Close'].max().squeeze():.2f}")
-col3.metric("All-time Low (period)", f"${df['Close'].min().squeeze():.2f}")
+col1.metric("Current Price", f"${float(df['Close'].iloc[-1]):.2f}")
+col2.metric("Period High", f"${float(df['Close'].max()):.2f}")
+col3.metric("Period Low", f"${float(df['Close'].min()):.2f}")
 
-# --- Forecast ---
-st.subheader("LSTM Forecast")
+st.subheader("ML Forecast")
 if st.button("Run Forecast"):
-    with st.spinner("Training LSTM model... this may take a minute"):
+    with st.spinner("Training model..."):
 
         scaler = MinMaxScaler()
         scaled = scaler.fit_transform(df[["Close"]])
@@ -52,24 +45,17 @@ if st.button("Run Forecast"):
             X.append(scaled[i - look_back:i, 0])
             y.append(scaled[i, 0])
         X, y = np.array(X), np.array(y)
-        X = X.reshape((X.shape[0], X.shape[1], 1))
 
         split = int(len(X) * 0.8)
         X_train, X_test = X[:split], X[split:]
         y_train, y_test = y[:split], y[split:]
 
-        model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(look_back, 1)),
-            Dropout(0.2),
-            LSTM(32, return_sequences=False),
-            Dropout(0.2),
-            Dense(1)
-        ])
-        model.compile(optimizer="adam", loss="mse")
-        model.fit(X_train, y_train, epochs=epochs, batch_size=32, verbose=0)
+        from sklearn.ensemble import GradientBoostingRegressor
+        model = GradientBoostingRegressor(n_estimators=200, max_depth=4, learning_rate=0.05)
+        model.fit(X_train, y_train)
 
-        predictions = model.predict(X_test)
-        predictions = scaler.inverse_transform(predictions)
+        predictions_scaled = model.predict(X_test).reshape(-1, 1)
+        predictions = scaler.inverse_transform(predictions_scaled)
         y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))
 
         pred_index = df.index[look_back + split:]
@@ -80,8 +66,6 @@ if st.button("Run Forecast"):
         fig2.update_layout(xaxis_title="Date", yaxis_title="Price (USD)", height=400)
         st.plotly_chart(fig2, use_container_width=True)
 
-        from sklearn.metrics import mean_squared_error
         rmse = np.sqrt(mean_squared_error(y_test_actual, predictions))
         st.metric("RMSE (lower is better)", f"${rmse:.2f}")
-        st.success(f"Last predicted price: ${predictions[-1][0]:,.2f}")
-
+        st.success(f"Last predicted price: ${float(predictions[-1][0]):,.2f}")
